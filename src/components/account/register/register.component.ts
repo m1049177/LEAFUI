@@ -1,0 +1,89 @@
+import Vue from 'vue';
+import { Component, Inject } from 'vue-property-decorator';
+import { required, minLength, maxLength, helpers, email } from 'vuelidate/lib/validators';
+import LoginService from '../login.service';
+import RegisterService from './register.service';
+import { EMAIL_ALREADY_USED_TYPE, LOGIN_ALREADY_USED_TYPE } from '../../../constants';
+import { bus } from '../../../main';
+
+const loginPattern = helpers.regex('alpha', /^[_.@A-Za-z0-9-]*$/);
+const validations: any = {
+  registerAccount: {
+    login: {
+      required,
+      minLength: minLength(1),
+      maxLength: maxLength(50),
+      pattern: loginPattern
+    },
+    email: {
+      required,
+      minLength: minLength(5),
+      maxLength: maxLength(254),
+      email
+    },
+    password: {
+      required,
+      minLength: minLength(4),
+      maxLength: maxLength(254)
+    }
+  },
+  confirmPassword: {
+    required,
+    minLength: minLength(4),
+    maxLength: maxLength(254)
+  }
+};
+@Component({
+  validations
+})
+export default class Register extends Vue {
+  @Inject('registerService') private registerService!: () => RegisterService;
+  @Inject('loginService') private loginService!: () => LoginService;
+  public registerAccount: any = {
+    login: undefined,
+    email: undefined,
+    password: undefined
+  };
+  public confirmPassword: any = null;
+  public doNotMatch = '';
+  public error = '';
+  public errorEmailExists = '';
+  public errorUserExists = '';
+  public success? = false;
+  bus: any;
+
+  public register(): void {
+    if (this.registerAccount.password !== this.confirmPassword) {
+      this.doNotMatch = 'ERROR';
+    } else {
+      this.doNotMatch = '';
+      this.error = '';
+      this.errorUserExists = '';
+      this.errorEmailExists = '';
+      this.registerAccount.langKey = 'en';
+      this.registerService()
+        .processRegistration(this.registerAccount)
+        .then(() => {
+          this.success = true;
+        })
+        .catch(error => {
+          this.success = false;
+          if (error.response.status === 400 && error.response.data.type === LOGIN_ALREADY_USED_TYPE) {
+            this.errorUserExists = 'ERROR';
+          } else if (error.response.status === 400 && error.response.data.type === EMAIL_ALREADY_USED_TYPE) {
+            this.errorEmailExists = 'ERROR';
+          } else {
+            this.error = 'ERROR';
+          }
+        });
+    }
+  }
+
+  public openLogin(): void {
+    this.loginService().openLogin(this.$root);
+  }
+
+  back() {
+    bus.$emit('register', false);
+  }
+}

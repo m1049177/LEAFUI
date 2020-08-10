@@ -1,0 +1,145 @@
+import { Component, Inject, Vue } from 'vue-property-decorator';
+import SpendService from '@/entities/spend/spend.service';
+import IssueService from '@/entities/issue/issue.service';
+import { ISpend } from '@/shared/model/spend.model';
+import { IIssue } from '@/shared/model/issue.model';
+import ChangeService from '@/entities/change/change.service';
+import MaintenanceService from '@/entities/maintenance/maintenance.service';
+import TechnologyService from '@/entities/technology/technology.service';
+import { IChange } from '@/shared/model/change.model';
+import { ITechnology } from '@/shared/model/technology.model';
+import { IMaintenance } from '@/shared/model/maintenance.model';
+import ApplicationService from '@/entities/application/application.service';
+import { IApplication } from '@/shared/model/application.model';
+import router from '@/router/index';
+import example from '../apexcharts/example.vue';
+import LineOfBusinessService from '@/entities/line-of-business/line-of-business.service';
+import { ILineOfBusiness } from '@/shared/model/line-of-business.model';
+import  {bus} from '../../../main.ts'
+@Component
+export default class AppPortfolio extends Vue {
+    @Inject('issueService') private issueService: () => IssueService;
+    @Inject('spendService') private spendService: () => SpendService;
+    @Inject('changeService') private changeService: () => ChangeService;
+    @Inject('maintenanceService') private maintenanceService: () => MaintenanceService;
+    @Inject('technologyService') private technologyService: () => TechnologyService;
+    @Inject('applicationService') private applicationService: () => ApplicationService;
+    @Inject('lineOfBusinessService') private lineOfBusinessService: () => LineOfBusinessService;
+    public issues: IIssue[] = [];
+    public changes: IChange[] = [];
+    public lineOfBusinesses: ILineOfBusiness[] = [];
+    public applications = [];
+    public technologies: ITechnology[] = [];
+    public maintenances: IMaintenance[] = [];
+    public spend = [];
+    public status: string[] = ["Running", "InProgress", "Halted"];
+    public applications_Spend: number[] = [0, 0, 0, 0];
+    public applicationTotalSpend = [];
+    public applicationSpendDetails = [];
+    public lobSpendDetails = [];
+    public spends: ISpend[] = [];
+    public isFetching = false;
+
+    public allApplications: IApplication[] = [];
+    public appsWithStatus = [];
+
+    public mounted(): void {
+        this.retrieveAllApplicationsData();
+    }
+    public retrieveAllApplicationsData(): void {
+        this.isFetching = true;
+        this.lineOfBusinessService().retrieve().then(
+            res => {
+                this.lineOfBusinesses = res.data;
+            }
+        )
+        this.issueService()
+            .retrieve()
+            .then(
+                res => {
+                    this.issues = res.data;
+                    this.issues.forEach(issue => {
+                        this.applications.push({ "status": issue.application.status, "data": issue, "type": "Issue" })
+                    });
+                    this.isFetching = false;
+                },
+                err => {
+                    this.isFetching = false;
+                }
+            );
+        this.changeService().retrieve().then(
+            res => {
+                this.changes = res.data;
+                this.changes.forEach(change => {
+                    this.applications.push({ "status": change.application.status, "data": change, "type": "Change" })
+                })
+            }
+        )
+        this.technologyService().retrieve().then(
+            res => {
+                this.technologies = res.data;
+                this.technologies.forEach(technology => {
+                    this.applications.push({ "status": technology.application.status, "data": technology, "type": "Technology" })
+                })
+            }
+        )
+        this.maintenanceService().retrieve().then(
+            res => {
+                this.maintenances = res.data;
+                this.maintenances.forEach(maintanance => {
+                    this.applications.push({ "status": maintanance.application.status, "data": maintanance, "type": "Maintanance" })
+                })
+            }
+        )
+        this.retrieveAllSpends();
+    }
+    public retrieveAllSpends(): void {
+        this.spendService().retrieve().then(res => {
+            this.spends = res.data;
+            this.status.forEach(app_status => {
+                var i = 0;
+                this.applications_Spend = [0, 0, 0, 0];
+                this.lineOfBusinesses.forEach(
+                    lob => {
+                        var lobSpend = 0;
+                        this.spends.forEach(element => {
+                            this.applications.forEach(app => {
+                                if (element.spendId == app.data.id && element.costType == app.type && app.status == app_status) {
+                                    if (app.type == "Issue") {
+                                        this.applications_Spend[0] = this.applications_Spend[0] + element.amount;
+                                    }
+                                    if (app.type == "Change") {
+                                        this.applications_Spend[1] = this.applications_Spend[1] + element.amount;
+                                    }
+                                    if (app.type == "Technology") {
+                                        this.applications_Spend[2] = this.applications_Spend[2] + element.amount;
+                                    }
+                                    if (app.type == "Maintanance") {
+                                        this.applications_Spend[3] = this.applications_Spend[3] + element.amount;
+                                    }
+                                }
+                                if (lob.id == app.data.application.lineOfBusiness.id && element.spendId == app.data.id && element.costType == app.type && app.status == app_status) {
+                                    lobSpend = lobSpend + element.amount;
+                                }
+                            });
+
+                        }
+                        );
+                        this.lobSpendDetails.push({ "lobName": lob.name, "spend": lobSpend, "status": app_status })
+                    });
+                this.applicationSpendDetails.push({ 'status': app_status, 'spendDetails': this.applications_Spend })
+                var result = this.applications_Spend.reduce((total, value) => total + value, 0)
+                this.applicationTotalSpend.push({ 'status': app_status, 'Total_Spend': result });
+            })
+        });
+        console.log(this.applicationSpendDetails)
+        console.log(this.applicationTotalSpend);
+        console.log(this.lobSpendDetails);
+    }
+
+    public navigateFunction(type): void {
+        bus.$emit('lobSpendDetails', this.lobSpendDetails);
+        var data = JSON.stringify(this.lobSpendDetails);
+        this.$router.push({ name: 'LobPortfolio', params: { appStatus: type, spend : data } })
+    }
+}
